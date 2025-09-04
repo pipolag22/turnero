@@ -1,25 +1,25 @@
-generator client { provider = "prisma-client-js" }
+generator client {
+  provider = "prisma-client-js"
+}
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-enum Role { ADMIN BOX_AGENT PSYCHO_AGENT }
+enum Role {
+  ADMIN
+  BOX_AGENT
+  PSYCHO_AGENT
+}
 
-/// Estados visibles en tu flujo:
-/// - LIC_DOCS_IN_SERVICE (presentar documentación)
-/// - WAITING_PSY (espera psicofísico)
-/// - PSY_IN_SERVICE (atención psicofísico)
-/// - WAITING_LIC_RETURN (retorno a licencia)
-/// - COMPLETED / CANCELLED (internos)
 enum Stage {
-  LIC_DOCS_IN_SERVICE
-  WAITING_PSY
-  PSY_IN_SERVICE
-  WAITING_LIC_RETURN
-  COMPLETED
-  CANCELLED
+  LIC_DOCS_IN_SERVICE // Presentar documentación (en box)
+  WAITING_PSY // Espera psicofísico
+  PSY_IN_SERVICE // En psicofísico
+  WAITING_LIC_RETURN // Retorno a Licencias
+  COMPLETED // Interno
+  CANCELLED // Interno
 }
 
 model User {
@@ -28,25 +28,21 @@ model User {
   name         String
   passwordHash String
   role         Role
-  office       String?    // "LICENCIAS" | "PSICOFISICO"
-  boxNumber    Int?       // 1|2|3 para BOX_AGENT
-  createdAt    DateTime   @default(now())
+  office       String?
+  boxNumber    Int?
+  createdAt    DateTime @default(now())
 }
 
 model Ticket {
-  id             String   @id @default(cuid())
-
-  /// número de turno autoincremental (desde una SEQUENCE de Postgres)
-  queueNumber    Int      @db.Integer @default(dbgenerated("nextval('ticket_number_seq')"))
-
-  fullName       String?  // se completa en el box
+  id             String    @id @default(cuid())
+  queueNumber    Int       @default(dbgenerated("nextval('ticket_number_seq')"))
+  fullName       String?
   stage          Stage
   assignedBox    Int?
   assignedUserId String?
-
-  calledAt       DateTime?  // cuándo fue llamado en Licencias
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  calledAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model AuditLog {
