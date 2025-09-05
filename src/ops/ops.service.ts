@@ -30,10 +30,7 @@ export class OpsService {
       return t;
     });
 
-    this.realtime.emit('ticket.called', ticket, [
-      'public:stage:LIC_DOCS_IN_SERVICE',
-    ]);
-
+    this.realtime.emit('ticket.called', ticket, [ 'public:stage:LIC_DOCS_IN_SERVICE' ]);
     return ticket;
   }
 

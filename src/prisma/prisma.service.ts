@@ -11,7 +11,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$disconnect();
   }
 
-  // Llamalo desde main.ts si querés (opcional)
+  
   async enableShutdownHooks(app: INestApplication) {
     process.on('beforeExit', async () => {
       await app.close();

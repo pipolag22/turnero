@@ -16,7 +16,7 @@ export class RealtimeGateway implements OnGatewayInit {
     // listo para emitir
   }
 
-  // Cliente puede suscribirse a "rooms" (ej: public:stage:WAITING_PSY)
+  // Cliente puede suscribirse a "rooms"
   @SubscribeMessage('subscribe')
   handleSubscribe(
     @ConnectedSocket() socket: Socket,

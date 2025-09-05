@@ -31,7 +31,7 @@ export class PublicController {
     return rows.map((t) => ({
       id: t.id,
       queueNumber: t.queueNumber,
-      displayName: abbreviate(t.fullName),   // ahora compila
+      displayName: abbreviate(t.fullName),  
       stage: t.stage,
       assignedBox: t.assignedBox,
       createdAt: t.createdAt,

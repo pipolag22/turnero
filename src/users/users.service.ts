@@ -33,7 +33,7 @@ export class UsersService {
     });
   }
 
-  /** Editar nombre/office/boxNumber/role (solo admin) */
+  /** Editar nombre/office/boxNumber/role */
   async update(requestUser: any, id: string, patch: Partial<{ name:string; role:RoleEnum; office:string|null; boxNumber:number|null }>) {
     if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
     const exists = await this.prisma.user.findUnique({ where: { id } });
@@ -51,7 +51,7 @@ export class UsersService {
     });
   }
 
-  /** Resetear password (solo admin) */
+  /** Resetear password */
   async resetPassword(requestUser: any, id: string, newPassword: string) {
     if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
     const exists = await this.prisma.user.findUnique({ where: { id } });
@@ -64,7 +64,7 @@ export class UsersService {
     });
   }
 
-  /** Eliminar (solo admin) */
+  /** Eliminar */
   async remove(requestUser: any, id: string) {
     if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
     const exists = await this.prisma.user.findUnique({ where: { id } });
