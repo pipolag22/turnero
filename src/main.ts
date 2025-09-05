@@ -1,19 +1,21 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { PrismaService } from './prisma/prisma.service';
+import helmet from 'helmet';
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    cors: { origin: true, credentials: true }, // habilita CORS amplio
-  });
+  const app = await NestFactory.create(AppModule);
 
-  // Validaciones en todos los endpoints 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.use(helmet());
+  app.enableCors({ origin: '*', credentials: false });
 
-  // Cierre limpio 
-  const prisma = app.get(PrismaService);
-  await prisma.enableShutdownHooks(app);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
   await app.listen(process.env.PORT ?? 3000);
   console.log(`API running on http://localhost:${process.env.PORT ?? 3000}`);
