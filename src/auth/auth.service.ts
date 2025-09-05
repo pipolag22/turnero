@@ -16,9 +16,16 @@ export class AuthService {
   }
 
   async login(email: string, password: string) {
-    const u = await this.validate(email, password);
-    const payload = { sub: u.id, role: u.role, boxNumber: u.boxNumber };
-    const accessToken = await this.jwt.signAsync(payload, { expiresIn: '8h' });
-    return { accessToken, user: u };
+    const user = await this.validate(email, password);
+
+    const payload = {
+      sub: user.id,
+      role: user.role,
+      boxNumber: user.boxNumber ?? null,
+      office: user.office ?? null,
+    };
+
+    const accessToken = await this.jwt.signAsync(payload);
+    return { accessToken };
   }
 }

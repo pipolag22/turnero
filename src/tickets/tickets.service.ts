@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 type Stage =
   | 'LIC_DOCS_IN_SERVICE'
@@ -11,7 +12,7 @@ type Stage =
 
 @Injectable()
 export class TicketsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private realtime: RealtimeGateway) {}
 
   listByStage(stage: Stage) {
     return this.prisma.ticket.findMany({
@@ -24,12 +25,20 @@ export class TicketsService {
   async setFullName(user: any, id: string, fullName: string) {
     const t = await this.prisma.ticket.findUnique({ where: { id } });
     if (!t) throw new ForbiddenException('Ticket no existe');
-    // Permite admin o el box que lo llamó
     if (!(user.role === 'ADMIN' || (user.role === 'BOX_AGENT' && user.sub === t.assignedUserId))) {
       throw new ForbiddenException('No autorizado');
     }
-    return this.prisma.ticket.update({ where: { id }, data: { fullName },
-      select: { id:true, queueNumber:true, fullName:true, stage:true } });
+    const updated = await this.prisma.ticket.update({
+      where: { id },
+      data: { fullName },
+      select: { id:true, queueNumber:true, fullName:true, stage:true },
+    });
+
+    this.realtime.emit('ticket.updated', updated, [
+      `public:stage:${updated.stage}`,
+    ]);
+
+    return updated;
   }
 
   async transition(user:any, id:string, toStage:Stage) {
@@ -43,16 +52,23 @@ export class TicketsService {
 
     if (!allowed) throw new ForbiddenException('Transición no permitida');
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.ticket.update({ where: { id }, data: { stage: toStage as any } });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.ticket.update({ where: { id }, data: { stage: toStage as any } });
       await tx.auditLog.create({
         data: {
           ticketId: id, userId: user?.sub, action: 'TRANSITION',
           fromStage: t.stage as any, toStage: toStage as any, metadata: {} as any
         }
       });
-      return updated;
+      return u;
     });
+
+    // emitir para la pantalla pública de destino y (opcional) la de origen
+    this.realtime.emit('ticket.transitioned', { id, from: t.stage, to: toStage }, [
+      `public:stage:${toStage}`,
+      `public:stage:${t.stage}`,
+    ]);
+
+    return updated;
   }
 }
-

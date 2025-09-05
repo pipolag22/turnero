@@ -7,6 +7,8 @@ import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { OpsModule } from './ops/ops.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { PublicModule } from './public/public.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { OpsModule } from './ops/ops.module';
     UsersModule,
     TicketsModule,
     OpsModule,
+    RealtimeModule,
+    PublicModule,
   ],
   controllers: [AppController],
   providers: [AppService],
