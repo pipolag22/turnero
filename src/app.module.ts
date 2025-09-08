@@ -10,16 +10,15 @@ import { OpsModule } from './ops/ops.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { PublicModule } from './public/public.module';
 import { LoggerModule } from 'nestjs-pino';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     LoggerModule.forRoot({
       pinoHttp: {
-        // pretty en desarrollo
         transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
         level: process.env.LOG_LEVEL ?? 'info',
-        // Adjuntamos request-id si está
         autoLogging: true,
         customProps: (req) => ({ requestId: req.headers['x-request-id'] }),
       },
@@ -31,6 +30,7 @@ import { LoggerModule } from 'nestjs-pino';
     OpsModule,
     RealtimeModule,
     PublicModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
