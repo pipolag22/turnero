@@ -1,6 +1,6 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { Prisma } from '@prisma/client';
 
 type Stage =
   | 'LIC_DOCS_IN_SERVICE'
@@ -12,75 +12,78 @@ type Stage =
 
 @Injectable()
 export class TicketsService {
-  constructor(private prisma: PrismaService, private realtime: RealtimeGateway) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  listByStage(stage: Stage) {
-    return this.prisma.ticket.findMany({
-      where: { stage: stage as any },
-      orderBy: [{ createdAt: 'asc' }, { queueNumber: 'asc' }],
-      select: { id:true, queueNumber:true, fullName:true, stage:true, assignedBox:true, assignedUserId:true, createdAt:true },
-    });
+  // Reglas de transición permitidas
+  private isValidTransition(from: Stage, to: Stage): boolean {
+    const edges: Record<Stage, Stage[]> = {
+      LIC_DOCS_IN_SERVICE: ['WAITING_PSY', 'CANCELLED'],
+      WAITING_PSY: ['PSY_IN_SERVICE', 'CANCELLED'],
+      PSY_IN_SERVICE: ['WAITING_LIC_RETURN', 'CANCELLED'],
+      WAITING_LIC_RETURN: ['COMPLETED', 'CANCELLED'],
+      COMPLETED: [],
+      CANCELLED: [],
+    };
+    return edges[from]?.includes(to) ?? false;
   }
 
-  async setFullName(user: any, id: string, fullName: string) {
-    const t = await this.prisma.ticket.findUnique({ where: { id } });
-    if (!t) throw new ForbiddenException('Ticket no existe');
+  async create(data: { fullName?: string; stage: Stage; assignedBox?: number; assignedUserId?: string }) {
+    const t = await this.prisma.ticket.create({
+      data: {
+        fullName: data.fullName ?? null,
+        stage: data.stage as any,
+        assignedBox: data.assignedBox ?? null,
+        assignedUserId: data.assignedUserId ?? null,
+      },
+      select: { id: true, queueNumber: true, fullName: true, stage: true, assignedBox: true, createdAt: true },
+    });
 
-    const isAdmin = user.role === 'ADMIN';
-    const isBoxOwner = user.role === 'BOX_AGENT' && t.assignedBox && user.boxNumber && t.assignedBox === user.boxNumber;
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'TICKET_CREATE',
+        ticketId: t.id,
+        meta: { stage: data.stage } as Prisma.InputJsonValue,
+      },
+    });
 
-    if (!(isAdmin || isBoxOwner)) {
-      throw new ForbiddenException('No autorizado para nombrar este ticket');
+    return t;
+  }
+
+  async findOne(id: string) {
+    const t = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: { id: true, queueNumber: true, fullName: true, stage: true, assignedBox: true, createdAt: true },
+    });
+    if (!t) throw new NotFoundException('Ticket no existe');
+    return t;
+  }
+
+  async advance(id: string, to: Stage) {
+    const current = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: { id: true, stage: true },
+    });
+    if (!current) throw new NotFoundException('Ticket no existe');
+
+    const from = current.stage as Stage;
+    if (!this.isValidTransition(from, to)) {
+      throw new BadRequestException(`Transición inválida: ${from} -> ${to}`);
     }
 
     const updated = await this.prisma.ticket.update({
       where: { id },
-      data: { fullName },
-      select: { id:true, queueNumber:true, fullName:true, stage:true, assignedBox:true },
+      data: { stage: to as any },
+      select: { id: true, queueNumber: true, stage: true, assignedBox: true, createdAt: true },
     });
 
-    this.realtime.emit('ticket.updated', updated, [ `public:stage:${updated.stage}` ]);
-    return updated;
-  }
-
-  async transition(user:any, id:string, toStage:Stage) {
-    const t = await this.prisma.ticket.findUnique({ where: { id } });
-    if (!t) throw new ForbiddenException('Ticket no existe');
-
-    const isAdmin = user.role === 'ADMIN';
-    const isBox = user.role === 'BOX_AGENT';
-    const isPsy  = user.role === 'PSYCHO_AGENT';
-
-    const isMyBox = isBox && user.boxNumber && t.assignedBox === user.boxNumber;
-    const isMyPsy = isPsy && t.assignedUserId === user.sub;
-
-    //permisos
-    const allowed =
-      isAdmin ||
-      (isBox && isMyBox && t.stage === 'LIC_DOCS_IN_SERVICE' && toStage === 'WAITING_PSY') ||
-      (isBox && isMyBox && t.stage === 'WAITING_LIC_RETURN' && toStage === 'COMPLETED') ||
-      (isPsy && isMyPsy && t.stage === 'PSY_IN_SERVICE' && (toStage === 'WAITING_LIC_RETURN' || toStage === 'CANCELLED'));
-
-    if (!allowed) {
-      throw new ForbiddenException('Transición no permitida para tu rol o ámbito');
-    }
-
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.ticket.update({ where: { id }, data: { stage: toStage as any } });
-      await tx.auditLog.create({
-        data: {
-          ticketId: id, userId: user?.sub, action: 'TRANSITION',
-          fromStage: t.stage as any, toStage: toStage as any, metadata: {} as any
-        }
-      });
-      return u;
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'TICKET_ADVANCE',
+        ticketId: id,
+        meta: { from, to } as Prisma.InputJsonValue,
+      },
     });
 
-    this.realtime.emit('ticket.transitioned', { id, from: t.stage, to: toStage }, [
-      `public:stage:${toStage}`,
-      `public:stage:${t.stage}`,
-    ]);
-
-    return updated;
+    return { id: updated.id, from, to, ticket: updated };
   }
 }

@@ -1,36 +1,35 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { IsEnum, IsString } from 'class-validator';
+import { Controller, Get, Param, Patch, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { TicketsService } from './tickets.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-enum Stage {
-  LIC_DOCS_IN_SERVICE = 'LIC_DOCS_IN_SERVICE',
-  WAITING_PSY = 'WAITING_PSY',
-  PSY_IN_SERVICE = 'PSY_IN_SERVICE',
-  WAITING_LIC_RETURN = 'WAITING_LIC_RETURN',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-}
+type Stage =
+  | 'LIC_DOCS_IN_SERVICE'
+  | 'WAITING_PSY'
+  | 'PSY_IN_SERVICE'
+  | 'WAITING_LIC_RETURN'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
-class SetNameDto { @IsString() fullName: string; }
-class TransitionDto { @IsEnum(Stage) toStage: Stage; }
-
-@Controller('tickets')
 @UseGuards(JwtAuthGuard)
+@Controller('tickets')
 export class TicketsController {
-  constructor(private tickets: TicketsService) {}
+  constructor(private readonly tickets: TicketsService) {}
 
-  @Get('queue')
-  list(@Query('stage') stage: Stage) { return this.tickets.listByStage(stage as any); }
-
-  @Patch(':id/fullname')
-  setName(@Req() req, @Param('id') id: string, @Body() dto: SetNameDto) {
-    return this.tickets.setFullName(req.user, id, dto.fullName);
+  // Avanza un ticket a otro estado
+  @Patch(':id/advance')
+  async advance(@Param('id') id: string, @Query('to') to: Stage) {
+    return this.tickets.advance(id, to);
   }
 
-  @Post(':id/transition')
-  transition(@Req() req, @Param('id') id: string, @Body() dto: TransitionDto) {
-    return this.tickets.transition(req.user, id, dto.toStage as any);
+  // (Opcional) obtener un ticket por id
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    return this.tickets.findOne(id);
+  }
+
+  // (Opcional) crear ticket manual (admin/ops)
+  @Post()
+  async create(@Body() body: { fullName?: string; stage: Stage; assignedBox?: number; assignedUserId?: string }) {
+    return this.tickets.create(body);
   }
 }
-

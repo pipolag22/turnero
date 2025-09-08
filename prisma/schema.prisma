@@ -1,12 +1,15 @@
+// ---------- GENERATOR ----------
 generator client {
   provider = "prisma-client-js"
 }
 
+// ---------- DATASOURCE ----------
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
+// ---------- ENUMS ----------
 enum Role {
   ADMIN
   BOX_AGENT
@@ -14,28 +17,33 @@ enum Role {
 }
 
 enum Stage {
-  LIC_DOCS_IN_SERVICE // Presentar documentación (en box)
-  WAITING_PSY // Espera psicofísico
-  PSY_IN_SERVICE // En psicofísico
-  WAITING_LIC_RETURN // Retorno a Licencias
-  COMPLETED // Interno
-  CANCELLED // Interno
+  LIC_DOCS_IN_SERVICE
+  WAITING_PSY
+  PSY_IN_SERVICE
+  WAITING_LIC_RETURN
+  COMPLETED
+  CANCELLED
 }
 
+// ---------- MODELS ----------
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String
-  passwordHash String
   role         Role
   office       String?
   boxNumber    Int?
+  passwordHash String
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([role])
+  @@index([boxNumber])
 }
 
 model Ticket {
   id             String    @id @default(cuid())
-  queueNumber    Int       @default(dbgenerated("nextval('ticket_number_seq')"))
+  queueNumber    Int       @default(dbgenerated("nextval('ticket_number_seq'::regclass)"))
   fullName       String?
   stage          Stage
   assignedBox    Int?
@@ -47,11 +55,9 @@ model Ticket {
 
 model AuditLog {
   id        String   @id @default(cuid())
-  ticketId  String
-  userId    String?
   action    String
-  fromStage Stage?
-  toStage   Stage?
-  metadata  Json?
-  at        DateTime @default(now())
+  ticketId  String?
+  userId    String?
+  meta      Json?
+  createdAt DateTime @default(now())
 }

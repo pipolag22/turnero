@@ -1,78 +1,110 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+// src/users/users.service.ts
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import * as argon2 from 'argon2';
-
-type RoleEnum = 'ADMIN' | 'BOX_AGENT' | 'PSYCHO_AGENT';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  /** Crear usuario (solo admin) */
-  async create(requestUser: any, dto: { email:string; name:string; password:string; role:RoleEnum; office?:string; boxNumber?:number }) {
-    if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
-    return this.prisma.user.create({
+  async create(dto: CreateUserDto) {
+    const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (exists) throw new ConflictException('Email ya registrado');
+
+    const passwordHash = await argon2.hash(dto.password);
+
+    const user = await this.prisma.user.create({
       data: {
         email: dto.email,
         name: dto.name,
         role: dto.role as any,
-        office: dto.office,
-        boxNumber: dto.boxNumber,
-        passwordHash: await argon2.hash(dto.password),
+        office: dto.office ?? null,
+        boxNumber: dto.boxNumber ?? null,
+        passwordHash,
       },
-      select: { id:true, email:true, name:true, role:true, office:true, boxNumber:true, createdAt:true },
+      select: { id: true, email: true, name: true, role: true, office: true, boxNumber: true, createdAt: true },
     });
+
+    const logData: Prisma.AuditLogCreateInput = {
+      action: 'USER_CREATE',
+      userId: user.id,
+      meta: { email: user.email } as Prisma.InputJsonValue,
+    };
+    await this.prisma.auditLog.create({ data: logData });
+
+    return user;
   }
 
-  /** Listar usuarios  */
-  async list(requestUser: any) {
-    if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
+  async findAll() {
     return this.prisma.user.findMany({
+      select: { id: true, email: true, name: true, role: true, office: true, boxNumber: true, createdAt: true },
       orderBy: [{ createdAt: 'desc' }],
-      select: { id:true, email:true, name:true, role:true, office:true, boxNumber:true, createdAt:true },
     });
   }
 
-  /** Editar nombre/office/boxNumber/role */
-  async update(requestUser: any, id: string, patch: Partial<{ name:string; role:RoleEnum; office:string|null; boxNumber:number|null }>) {
-    if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
-    const exists = await this.prisma.user.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('Usuario no existe');
+  async update(id: string, dto: UpdateUserDto) {
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    if (!u) throw new NotFoundException('Usuario no existe');
 
-    return this.prisma.user.update({
+    if ((dto as any).email && (dto as any).email !== u.email) {
+      const emailUsed = await this.prisma.user.findUnique({ where: { email: (dto as any).email } });
+      if (emailUsed) throw new ConflictException('Email ya registrado');
+    }
+
+    const updated = await this.prisma.user.update({
       where: { id },
       data: {
-        name: patch.name ?? undefined,
-        role: (patch.role as any) ?? undefined,
-        office: patch.office === null ? null : patch.office ?? undefined,
-        boxNumber: patch.boxNumber === null ? null : patch.boxNumber ?? undefined,
+        name: dto.name ?? undefined,
+        office: dto.office ?? undefined,
+        boxNumber: dto.boxNumber ?? undefined,
+        role: (dto as any).role ?? undefined,
       },
-      select: { id:true, email:true, name:true, role:true, office:true, boxNumber:true, createdAt:true },
+      select: { id: true, email: true, name: true, role: true, office: true, boxNumber: true, createdAt: true },
     });
+
+    const logData: Prisma.AuditLogCreateInput = {
+      action: 'USER_UPDATE',
+      userId: id,
+      meta: { changes: { ...dto } } as Prisma.InputJsonValue,
+    };
+    await this.prisma.auditLog.create({ data: logData });
+
+    return updated;
   }
 
-  /** Resetear password */
-  async resetPassword(requestUser: any, id: string, newPassword: string) {
-    if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
-    const exists = await this.prisma.user.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('Usuario no existe');
+  async resetPassword(id: string, newPassword: string) {
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    if (!u) throw new NotFoundException('Usuario no existe');
 
-    return this.prisma.user.update({
-      where: { id },
-      data: { passwordHash: await argon2.hash(newPassword) },
-      select: { id:true, email:true, name:true, role:true },
-    });
+    const passwordHash = await argon2.hash(newPassword);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+
+    const logData: Prisma.AuditLogCreateInput = {
+      action: 'USER_RESET_PASSWORD',
+      userId: id,
+      meta: { by: 'admin', reason: 'manual reset' } as Prisma.InputJsonValue,
+    };
+    await this.prisma.auditLog.create({ data: logData });
+
+    return { ok: true };
   }
 
-  /** Eliminar */
-  async remove(requestUser: any, id: string) {
-    if (requestUser.role !== 'ADMIN') throw new ForbiddenException('Solo ADMIN');
-    const exists = await this.prisma.user.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('Usuario no existe');
+  async remove(id: string) {
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    if (!u) throw new NotFoundException('Usuario no existe');
 
-    return this.prisma.user.delete({
-      where: { id },
-      select: { id:true, email:true },
-    });
+    await this.prisma.user.delete({ where: { id } });
+
+    const logData: Prisma.AuditLogCreateInput = {
+      action: 'USER_DELETE',
+      userId: id,
+      meta: { hard: false } as Prisma.InputJsonValue,
+    };
+    await this.prisma.auditLog.create({ data: logData });
+
+    return { ok: true };
   }
 }
