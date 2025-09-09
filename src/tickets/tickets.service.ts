@@ -86,4 +86,32 @@ export class TicketsService {
 
     return { id: updated.id, from, to, ticket: updated };
   }
+
+  async setName(id: string, fullName: string) {
+  const before = await this.prisma.ticket.findUnique({
+    where: { id },
+    select: { id: true, fullName: true, queueNumber: true, stage: true, assignedBox: true, createdAt: true },
+  });
+  if (!before) throw new NotFoundException('Ticket no existe');
+
+  const updated = await this.prisma.ticket.update({
+    where: { id },
+    data: { fullName },
+    select: { id: true, fullName: true, queueNumber: true, stage: true, assignedBox: true, createdAt: true },
+  });
+
+  // Audit
+  await this.prisma.auditLog.create({
+    data: {
+      action: 'TICKET_SET_NAME',
+      ticketId: id,
+      meta: {
+        beforeFullName: before.fullName ?? null,
+        afterFullName: updated.fullName ?? null,
+      } as any,
+    },
+  });
+
+  return updated;
+}
 }

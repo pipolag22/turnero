@@ -6,6 +6,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import * as argon2 from 'argon2';
 import { Prisma } from '@prisma/client';
 
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -75,22 +76,27 @@ export class UsersService {
     return updated;
   }
 
-  async resetPassword(id: string, newPassword: string) {
+   async resetPassword(id: string, newPassword: string) {
     const u = await this.prisma.user.findUnique({ where: { id } });
     if (!u) throw new NotFoundException('Usuario no existe');
 
     const passwordHash = await argon2.hash(newPassword);
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
-
-    const logData: Prisma.AuditLogCreateInput = {
-      action: 'USER_RESET_PASSWORD',
-      userId: id,
-      meta: { by: 'admin', reason: 'manual reset' } as Prisma.InputJsonValue,
-    };
-    await this.prisma.auditLog.create({ data: logData });
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'USER_RESET_PASSWORD',
+          userId: id,
+          meta: { by: 'admin', reason: 'manual reset' } as Prisma.InputJsonValue,
+        },
+      });
+    } catch {
+      // swallow
+    }
 
     return { ok: true };
   }
+  
 
   async remove(id: string) {
     const u = await this.prisma.user.findUnique({ where: { id } });
@@ -107,4 +113,5 @@ export class UsersService {
 
     return { ok: true };
   }
+  
 }
