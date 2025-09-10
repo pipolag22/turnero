@@ -9,23 +9,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ---------- ENUMS ----------
+// ---------- ENUMS (roles del sistema) ----------
 enum Role {
   ADMIN
   BOX_AGENT
   PSYCHO_AGENT
 }
 
-enum Stage {
-  LIC_DOCS_IN_SERVICE
-  WAITING_PSY
-  PSY_IN_SERVICE
-  WAITING_LIC_RETURN
-  COMPLETED
-  CANCELLED
-}
-
-// ---------- MODELS ----------
+// ---------- MODELOS auxiliares ----------
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -41,18 +32,6 @@ model User {
   @@index([boxNumber])
 }
 
-model Ticket {
-  id             String    @id @default(cuid())
-  queueNumber    Int       @default(dbgenerated("nextval('ticket_number_seq'::regclass)"))
-  fullName       String?
-  stage          Stage
-  assignedBox    Int?
-  assignedUserId String?
-  calledAt       DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-}
-
 model AuditLog {
   id        String   @id @default(cuid())
   action    String
@@ -60,4 +39,42 @@ model AuditLog {
   userId    String?
   meta      Json?
   createdAt DateTime @default(now())
+}
+
+// ---------- ENUMS del turnero (únicos y finales) ----------
+enum TicketStatus {
+  EN_COLA
+  EN_ATENCION
+  DERIVADO
+  FINALIZADO
+  CANCELADO
+}
+
+enum TicketStage {
+  RECEPCION
+  BOX
+  PSICO
+  FINAL
+}
+
+// ---------- MODELO Ticket (ÚNICO) ----------
+model Ticket {
+  id              String       @id @default(uuid())
+
+  // Campos usados por el front nuevo
+  nombre          String?
+  status          TicketStatus @default(EN_COLA)
+  stage           TicketStage  @default(RECEPCION)
+  date            DateTime
+
+  // (opcionales por si los usás)
+  assignedBox     Int?
+  assignedUserId  String?
+  calledAt        DateTime?
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([date])
+  @@index([date, stage, status, createdAt])
 }

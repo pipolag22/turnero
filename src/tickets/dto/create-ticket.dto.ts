@@ -1,32 +1,35 @@
+// src/tickets/dto/create-ticket.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsInt, Min } from 'class-validator';
-
-
-export const StageEnum = [
-  'LIC_DOCS_IN_SERVICE',
-  'WAITING_PSY',
-  'PSY_IN_SERVICE',
-  'WAITING_LIC_RETURN',
-  'COMPLETED',
-  'CANCELLED',
-] as const;
-
-
-export type Stage = typeof StageEnum[number];
+import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
+import { StageEnum, type Stage } from './ticket.enums';
 
 export class CreateTicketDto {
-  @ApiProperty({ example: 'Juan Pérez' })
+  // Aceptamos ambos nombres para compatibilidad con front/back
+  @ApiProperty({ example: 'Juan Pérez', required: false })
   @IsString()
-  fullName: string;
+  @IsOptional()
+  fullName?: string;
 
-  @ApiProperty({ enum: StageEnum, enumName: 'Stage', example: 'LIC_DOCS_IN_SERVICE' })
+  @ApiProperty({ example: 'Juan Pérez', required: false })
+  @IsString()
+  @IsOptional()
+  nombre?: string;
+
+  // Si tu front NO envía date, lo rellenamos con HOY en el controller
+  @ApiProperty({ example: '2025-09-10', required: false })
+  @IsDateString()
+  @IsOptional()
+  date?: string; // YYYY-MM-DD
+
+  // Opcional: si alguien aún te envía stage legacy lo aceptamos (lo podés ignorar)
+  @ApiProperty({ enum: StageEnum, enumName: 'Stage', required: false })
   @IsEnum(StageEnum)
-  stage: Stage;
+  @IsOptional()
+  stage?: Stage;
 
+  // Otros opcionales que ya tenías
   @ApiProperty({ example: 1, required: false })
   @IsOptional()
-  @IsInt()
-  @Min(1)
   assignedBox?: number;
 
   @ApiProperty({ example: 'userId123', required: false })

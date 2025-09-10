@@ -1,2 +1,0 @@
-ALTER TABLE "public"."AuditLog"
-  ADD COLUMN IF NOT EXISTS "meta" JSONB;

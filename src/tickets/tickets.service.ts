@@ -1,117 +1,134 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import type { Etapa, Estado } from './dto/ticket.enums'; 
 
-type Stage =
-  | 'LIC_DOCS_IN_SERVICE'
-  | 'WAITING_PSY'
-  | 'PSY_IN_SERVICE'
-  | 'WAITING_LIC_RETURN'
-  | 'COMPLETED'
-  | 'CANCELLED';
 
 @Injectable()
 export class TicketsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rt: RealtimeGateway,
+  ) {}
 
-  // Reglas de transición permitidas
-  private isValidTransition(from: Stage, to: Stage): boolean {
-    const edges: Record<Stage, Stage[]> = {
-      LIC_DOCS_IN_SERVICE: ['WAITING_PSY', 'CANCELLED'],
-      WAITING_PSY: ['PSY_IN_SERVICE', 'CANCELLED'],
-      PSY_IN_SERVICE: ['WAITING_LIC_RETURN', 'CANCELLED'],
-      WAITING_LIC_RETURN: ['COMPLETED', 'CANCELLED'],
-      COMPLETED: [],
-      CANCELLED: [],
+  /** YYYY-MM-DD -> Date (00:00 local) */
+  private toDate(dateISO: string) {
+    return new Date(`${dateISO}T00:00:00`);
+  }
+
+  async snapshot(dateISO: string) {
+    const date = this.toDate(dateISO);
+    const all = await this.prisma.ticket.findMany({
+      where: { date },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const colas: Record<Etapa, any[]> = {
+      RECEPCION: [],
+      BOX: [],
+      PSICO: [],
+      FINAL: [],
     };
-    return edges[from]?.includes(to) ?? false;
-  }
+    let nowServing: any = null;
 
-  async create(data: { fullName?: string; stage: Stage; assignedBox?: number; assignedUserId?: string }) {
-    const t = await this.prisma.ticket.create({
-      data: {
-        fullName: data.fullName ?? null,
-        stage: data.stage as any,
-        assignedBox: data.assignedBox ?? null,
-        assignedUserId: data.assignedUserId ?? null,
-      },
-      select: { id: true, queueNumber: true, fullName: true, stage: true, assignedBox: true, createdAt: true },
-    });
-
-    await this.prisma.auditLog.create({
-      data: {
-        action: 'TICKET_CREATE',
-        ticketId: t.id,
-        meta: { stage: data.stage } as Prisma.InputJsonValue,
-      },
-    });
-
-    return t;
-  }
-
-  async findOne(id: string) {
-    const t = await this.prisma.ticket.findUnique({
-      where: { id },
-      select: { id: true, queueNumber: true, fullName: true, stage: true, assignedBox: true, createdAt: true },
-    });
-    if (!t) throw new NotFoundException('Ticket no existe');
-    return t;
-  }
-
-  async advance(id: string, to: Stage) {
-    const current = await this.prisma.ticket.findUnique({
-      where: { id },
-      select: { id: true, stage: true },
-    });
-    if (!current) throw new NotFoundException('Ticket no existe');
-
-    const from = current.stage as Stage;
-    if (!this.isValidTransition(from, to)) {
-      throw new BadRequestException(`Transición inválida: ${from} -> ${to}`);
+    for (const t of all) {
+      if (t.status === 'FINALIZADO' || t.status === 'CANCELADO') continue;
+      // si tu Prisma enum ya devuelve strings compatibles, esto funciona directo
+      colas[t.stage as Etapa].push(t);
+      if (t.status === 'EN_ATENCION') nowServing = t;
     }
+
+    return { date: dateISO, colas, nowServing };
+  }
+
+  async create(nombre: string | undefined, dateISO: string) {
+    const date = this.toDate(dateISO);
+
+    const created = await this.prisma.ticket.create({
+      data: {
+        nombre: nombre ?? null,
+        date,
+        status: 'EN_COLA' as any,
+        stage: 'RECEPCION' as any,
+      },
+    });
+
+    // Broadcast
+    this.rt.emitTurnoCreated(created);
+    this.rt.emitQueueSnapshot(await this.snapshot(dateISO));
+
+    return created;
+  }
+
+  async patch(id: string, patch: { nombre?: string; status?: Estado; stage?: Etapa }) {
+    const data: any = {};
+    if (patch.nombre !== undefined) data.nombre = patch.nombre;
+    if (patch.status !== undefined) data.status = patch.status as any;
+    if (patch.stage  !== undefined) data.stage  = patch.stage as any;
 
     const updated = await this.prisma.ticket.update({
       where: { id },
-      data: { stage: to as any },
-      select: { id: true, queueNumber: true, stage: true, assignedBox: true, createdAt: true },
+      data,
     });
 
-    await this.prisma.auditLog.create({
-      data: {
-        action: 'TICKET_ADVANCE',
-        ticketId: id,
-        meta: { from, to } as Prisma.InputJsonValue,
-      },
-    });
+    // Broadcast
+    this.rt.emitTurnoUpdated(updated);
+    this.rt.emitQueueSnapshot(
+      await this.snapshot(updated.date.toISOString().slice(0, 10)),
+    );
 
-    return { id: updated.id, from, to, ticket: updated };
+    return updated;
   }
 
-  async setName(id: string, fullName: string) {
-  const before = await this.prisma.ticket.findUnique({
-    where: { id },
-    select: { id: true, fullName: true, queueNumber: true, stage: true, assignedBox: true, createdAt: true },
-  });
-  if (!before) throw new NotFoundException('Ticket no existe');
+  /**
+   * Toma el siguiente ticket de la cola de una etapa, en forma transaccional.
+   * Intenta usar isolation level alto; si no está soportado (p.ej. SQLite), hace fallback.
+   */
+  async takeNext(stage: Etapa, dateISO: string) {
+    const date = this.toDate(dateISO);
 
-  const updated = await this.prisma.ticket.update({
-    where: { id },
-    data: { fullName },
-    select: { id: true, fullName: true, queueNumber: true, stage: true, assignedBox: true, createdAt: true },
-  });
+    const runTx = async (tx: PrismaService) => {
+      // 1) Buscar el primero en cola (más antiguo)
+      const next = await (tx as any).ticket.findFirst({
+        where: {
+          date,
+          stage: stage as any,
+          status: 'EN_COLA' as any,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (!next) return null;
 
-  // Audit
-  await this.prisma.auditLog.create({
-    data: {
-      action: 'TICKET_SET_NAME',
-      ticketId: id,
-      meta: {
-        beforeFullName: before.fullName ?? null,
-        afterFullName: updated.fullName ?? null,
-      } as any,
-    },
-  });
+      // 2) Marcarlo EN_ATENCION
+      const updated = await (tx as any).ticket.update({
+        where: { id: next.id },
+        data: { status: 'EN_ATENCION' as any },
+      });
 
-  return updated;
-}
+      return updated;
+    };
+
+    let result: any = null;
+
+    // Intento con isolationLevel alto (Postgres/MySQL)
+    try {
+      result = await (this.prisma as any).$transaction(
+        async (tx: any) => runTx(tx as PrismaService),
+        { isolationLevel: 'Serializable' },
+      );
+    } catch {
+      // Fallback sin isolationLevel (compatible con SQLite)
+      result = await (this.prisma as any).$transaction(async (tx: any) =>
+        runTx(tx as PrismaService),
+      );
+    }
+
+    if (result) {
+      this.rt.emitTurnoUpdated(result);
+      this.rt.emitNowServing(result);
+      this.rt.emitQueueSnapshot(await this.snapshot(dateISO));
+    }
+
+    return result; // puede ser null si no hay en cola
+  }
 }

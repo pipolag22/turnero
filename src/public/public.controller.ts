@@ -1,31 +1,38 @@
-import { Controller, Get, Query, ParseEnumPipe } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Stage } from '@prisma/client';
-import type { Stage as StageType } from '@prisma/client';
+import { TicketStage, TicketStatus } from '@prisma/client';
 
-function abbreviate(name?: string | null): string | null {
-  if (!name) return null;
-  const parts = name.trim().split(/\s+/);
-  if (parts.length < 2) return parts[0];
-  return `${parts[0]} ${parts[1][0].toUpperCase()}.`;
+function toDay(dateISO: string) {
+  return new Date(`${dateISO}T00:00:00`);
 }
 
 @Controller('public')
 export class PublicController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
+  // Cola pública filtrada por etapa y fecha
   @Get('queue')
-  async queue(@Query('stage', new ParseEnumPipe(Stage)) stage: StageType) {
+  async queue(
+    @Query('stage') stage: TicketStage,
+    @Query('date') date: string,
+  ) {
+    const day = toDay(date);
+
     const rows = await this.prisma.ticket.findMany({
-      where: { stage },
-      orderBy: [{ createdAt: 'asc' }, { queueNumber: 'asc' }],
-      select: { id: true, queueNumber: true, fullName: true, stage: true, assignedBox: true, createdAt: true },
+      where: { date: day, stage, status: TicketStatus.EN_COLA },
+      orderBy: [{ createdAt: 'asc' }], // ❌ sin queueNumber
+      select: {
+        id: true,
+        nombre: true,      // ✅ antes era fullName
+        stage: true,
+        assignedBox: true,
+        createdAt: true,
+      },
     });
 
     return rows.map((t) => ({
       id: t.id,
-      queueNumber: t.queueNumber,
-      displayName: abbreviate(t.fullName),
+      displayName: (t.nombre ?? '').trim(), // ✅ antes abreviabas fullName
       stage: t.stage,
       assignedBox: t.assignedBox,
       createdAt: t.createdAt,
