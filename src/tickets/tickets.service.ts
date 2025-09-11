@@ -85,50 +85,59 @@ export class TicketsService {
    * Intenta usar isolation level alto; si no está soportado (p.ej. SQLite), hace fallback.
    */
   async takeNext(stage: Etapa, dateISO: string) {
-    const date = this.toDate(dateISO);
+  const date = this.toDate(dateISO);
 
-    const runTx = async (tx: PrismaService) => {
-      // 1) Buscar el primero en cola (más antiguo)
+  // orden de búsqueda: primero la misma etapa, si no hay, la anterior
+  const fallback: Record<Etapa, Etapa | null> = {
+    RECEPCION: null,
+    BOX: 'RECEPCION',
+    PSICO: 'BOX',
+    FINAL: null,
+  };
+
+  const runTx = async (tx: PrismaService) => {
+    // helper para buscar y (opcionalmente) promover
+    const pickFrom = async (fromStage: Etapa, promoteTo?: Etapa) => {
       const next = await (tx as any).ticket.findFirst({
-        where: {
-          date,
-          stage: stage as any,
-          status: 'EN_COLA' as any,
-        },
+        where: { date, stage: fromStage as any, status: 'EN_COLA' as any },
         orderBy: { createdAt: 'asc' },
       });
       if (!next) return null;
 
-      // 2) Marcarlo EN_ATENCION
-      const updated = await (tx as any).ticket.update({
-        where: { id: next.id },
-        data: { status: 'EN_ATENCION' as any },
-      });
+      const data: any = { status: 'EN_ATENCION' as any };
+      if (promoteTo && promoteTo !== fromStage) data.stage = promoteTo as any;
 
-      return updated;
+      return await (tx as any).ticket.update({
+        where: { id: next.id },
+        data,
+      });
     };
 
-    let result: any = null;
+    // 1) intento en la etapa actual
+    let updated = await pickFrom(stage);
 
-    // Intento con isolationLevel alto (Postgres/MySQL)
-    try {
-      result = await (this.prisma as any).$transaction(
-        async (tx: any) => runTx(tx as PrismaService),
-        { isolationLevel: 'Serializable' },
-      );
-    } catch {
-      // Fallback sin isolationLevel (compatible con SQLite)
-      result = await (this.prisma as any).$transaction(async (tx: any) =>
-        runTx(tx as PrismaService),
-      );
+    // 2) si no hay, pruebo en la anterior y promuevo
+    if (!updated && fallback[stage]) {
+      updated = await pickFrom(fallback[stage]!, stage);
     }
 
-    if (result) {
-      this.rt.emitTurnoUpdated(result);
-      this.rt.emitNowServing(result);
-      this.rt.emitQueueSnapshot(await this.snapshot(dateISO));
-    }
+    return updated;
+  };
 
-    return result; // puede ser null si no hay en cola
+  let result: any = null;
+  try {
+    result = await (this.prisma as any).$transaction(async (tx: any) => runTx(tx as PrismaService), { isolationLevel: 'Serializable' });
+  } catch {
+    result = await (this.prisma as any).$transaction(async (tx: any) => runTx(tx as PrismaService));
   }
+
+  if (result) {
+    this.rt.emitTurnoUpdated(result);
+    this.rt.emitNowServing(result);
+    this.rt.emitQueueSnapshot(await this.snapshot(dateISO));
+  }
+
+  return result; // puede ser null
+}
+
 }
