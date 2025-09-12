@@ -12,11 +12,15 @@ import { TicketsModule } from './tickets/tickets.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }]),
+    ThrottlerModule.forRoot([{
+     ttl: 60_000,
+    limit: process.env.NODE_ENV === 'production' ? 60 : 500, 
+    }]),
     AuthModule,
     UsersModule,
     PublicModule,

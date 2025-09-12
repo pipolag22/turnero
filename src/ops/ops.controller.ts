@@ -1,53 +1,77 @@
 import { BadRequestException, Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
-import { OpsService } from './ops.service';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OpsService } from './ops.service';
 
-type JwtUser = { id: string; boxNumber?: number | null };
+// Normaliza el user del JWT (id | userId | sub) y boxNumber
+function pickJwt(req: any) {
+  const u = (req?.user ?? {}) as {
+    id?: string;
+    userId?: string;
+    sub?: string;
+    boxNumber?: number | null;
+  };
+  const id = u.id ?? u.userId ?? u.sub;
+  return { id, boxNumber: u.boxNumber ?? null };
+}
 
-@Controller('ops')
 @UseGuards(JwtAuthGuard)
+@SkipThrottle() // quita 429 en botones operativos
+@Controller('ops')
 export class OpsController {
   constructor(private readonly ops: OpsService) {}
 
-  // ===== Compatibilidad con lo que ya tenías =====
-  // Llama siguiente para Documentación (RECEPCION -> BOX), asigna box y queda "llamando".
+  // ===== BOX / LIC =====
   @Post('call-next-lic')
   async callNextLic(@Req() req: any, @Body('date') date?: string) {
-    const user = req.user as JwtUser;
-    return this.ops.callNextDocs(user, date);
+    const { id, boxNumber } = pickJwt(req);
+    if (!boxNumber) throw new BadRequestException('BOX_NUMBER_REQUIRED');
+    return this.ops.callNextDocs({ id: id!, boxNumber }, date);
   }
 
-  // Llama siguiente para PSICO (si usás un panel de psico).
-  @Post('call-next-psy')
-  async callNextPsy(@Req() req: any, @Body('date') date?: string) {
-    const user = req.user as JwtUser;
-    return this.ops.callNextPsy(user, date);
-  }
-
-  // ===== Nuevos endpoints para el flujo de BOX =====
-
-  // Llamar siguiente para Retiro (desde FINAL). Queda "llamando" en FINAL.
+  // ===== FINAL =====
   @Post('call-next-ret')
   async callNextRet(@Req() req: any, @Body('date') date?: string) {
-    const user = req.user as JwtUser;
-    return this.ops.callNextRet(user, date);
+    const { id, boxNumber } = pickJwt(req);
+    if (!boxNumber) throw new BadRequestException('BOX_NUMBER_REQUIRED');
+    return this.ops.callNextRet({ id: id!, boxNumber }, date);
   }
 
-  // Marcar como "atendiendo" (pasa de EN_COLA -> EN_ATENCION). Solo el mismo box asignado.
+  // BOX/FINAL: "llamando" -> "atendiendo"
   @Post('attending')
   async markAttending(@Req() req: any, @Body() dto: { ticketId: string }) {
-    const user = req.user as JwtUser;
-    if (!user.boxNumber) throw new BadRequestException('BOX_NUMBER_REQUIRED');
-    return this.ops.markAttending({ ticketId: dto.ticketId, box: user.boxNumber });
+    const { boxNumber } = pickJwt(req);
+    if (!boxNumber) throw new BadRequestException('BOX_NUMBER_REQUIRED');
+    return this.ops.markAttending({ ticketId: dto.ticketId, box: boxNumber });
   }
 
-  // Finalizar desde un BOX:
-  // - si estaba en BOX => deriva a PSICO (EN_COLA) y libera el box
-  // - si estaba en FINAL => FINALIZADO y libera el box
+  // BOX/FINAL: finalizar
   @Post('finish')
   async finishFromBox(@Req() req: any, @Body() dto: { ticketId: string }) {
-    const user = req.user as JwtUser;
-    if (!user.boxNumber) throw new BadRequestException('BOX_NUMBER_REQUIRED');
-    return this.ops.finishFromBox({ ticketId: dto.ticketId, box: user.boxNumber });
+    const { boxNumber } = pickJwt(req);
+    if (!boxNumber) throw new BadRequestException('BOX_NUMBER_REQUIRED');
+    return this.ops.finishFromBox({ ticketId: dto.ticketId, box: boxNumber });
+  }
+
+  // ===== PSICO =====
+  @Post('call-next-psy')
+  async callNextPsy(@Req() req: any, @Body('date') date?: string) {
+    const { id } = pickJwt(req);
+    if (!id) throw new BadRequestException('USER_ID_REQUIRED');
+    return this.ops.callNextPsy(id, date);
+  }
+
+  @Post('psy/attend')
+  async psyAttend(@Req() req: any, @Body() dto: { ticketId: string }) {
+    const { id } = pickJwt(req);
+    if (!id) throw new BadRequestException('USER_ID_REQUIRED');
+    return this.ops.psyAttend({ ticketId: dto.ticketId, userId: id });
+  }
+
+  @Post('psy/finish')
+  async psyFinish(@Req() req: any, @Body() dto: { ticketId: string }) {
+    const { id } = pickJwt(req);
+    if (!id) throw new BadRequestException('USER_ID_REQUIRED');
+    return this.ops.psyFinish({ ticketId: dto.ticketId, userId: id });
   }
 }
