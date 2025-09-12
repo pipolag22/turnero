@@ -11,6 +11,8 @@ import { AllExceptionsFilter } from './common/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  
+
   // Seguridad y CORS
   app.use(helmet());
   app.enableCors({ origin: '*', credentials: false });

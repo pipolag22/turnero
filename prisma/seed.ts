@@ -1,7 +1,7 @@
 // prisma/seed.ts
 import { resolve } from 'node:path';
 import * as dotenv from 'dotenv';
-dotenv.config({ path: resolve(__dirname, '../.env') }); // 👈 carga api/.env
+dotenv.config({ path: resolve(__dirname, '../.env') });
 
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
