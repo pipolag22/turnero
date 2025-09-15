@@ -7,6 +7,7 @@ import * as argon2 from 'argon2';
 import { Prisma } from '@prisma/client';
 
 
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -97,21 +98,34 @@ export class UsersService {
     return { ok: true };
   }
   
-
   async remove(id: string) {
-    const u = await this.prisma.user.findUnique({ where: { id } });
-    if (!u) throw new NotFoundException('Usuario no existe');
+    return this.prisma.$transaction(async (tx) => {
+      const u = await tx.user.findUnique({ where: { id } });
+      if (!u) throw new NotFoundException('Usuario no existe');
 
-    await this.prisma.user.delete({ where: { id } });
+      // “Liberar cualquier ticket que estuviera reservado/asignado a este usuario
+      await tx.ticket.updateMany({
+        where: { assignedUserId: id },
+        data: {
+          assignedUserId: null,
+          calledAt: null, 
+        },
+      });
 
-    const logData: Prisma.AuditLogCreateInput = {
-      action: 'USER_DELETE',
-      userId: id,
-      meta: { hard: false } as Prisma.InputJsonValue,
-    };
-    await this.prisma.auditLog.create({ data: logData });
+      
+      await tx.user.delete({ where: { id } });
 
-    return { ok: true };
+      
+      await tx.auditLog.create({
+        data: {
+          action: 'USER_DELETE',
+          userId: id,
+          meta: { hard: true } as Prisma.InputJsonValue,
+        },
+      });
+
+      return { ok: true };
+    });
   }
   
 }

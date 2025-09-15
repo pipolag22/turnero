@@ -62,4 +62,5 @@ export class TicketsController {
   async next(@Body() dto: NextDto) {
     return this.service.takeNext(dto.stage, dto.date);
   }
+  
 }

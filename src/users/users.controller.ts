@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, Delete } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -34,5 +34,10 @@ export class UsersController {
   @Roles('ADMIN' as AppRole)
   resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto) {
     return this.users.resetPassword(id, dto.newPassword);
+  }
+  @Delete(':id')
+  @Roles('ADMIN' as AppRole)
+  remove(@Param('id') id: string) {
+    return this.users.remove(id);
   }
 }
