@@ -1,13 +1,12 @@
 // src/tickets/dto/next.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsIn } from 'class-validator';
-import { EtapaEnum } from './ticket.enums';
-import type { Etapa } from './ticket.enums';
+import { IsDateString, IsEnum } from 'class-validator';
+import { EtapaEnum, type Etapa } from '../ticket.enums';
 
 export class NextDto {
-  @ApiProperty({ enum: EtapaEnum })
-  @IsIn(EtapaEnum as readonly string[])
-  stage!: Etapa; // RECEPCION | BOX | PSICO | FINAL
+  @ApiProperty({ enum: EtapaEnum, enumName: 'Etapa' })
+  @IsEnum(EtapaEnum)
+  stage!: Etapa;
 
   @ApiProperty({ example: '2025-09-10' })
   @IsDateString()

@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma, TicketStage, TicketStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { Prisma, TicketStage, TicketStatus } from '@prisma/client';
+
+type DeriveTo = 'PSICO' | 'CAJERO' | 'FINAL';
 
 @Injectable()
 export class OpsService {
@@ -25,7 +27,9 @@ export class OpsService {
     if (busy) throw new BadRequestException('BOX_BUSY');
   }
 
-  // ===== LLAMAR =====
+  // ========= LLAMAR =========
+
+  /** RECEPCIÓN -> BOX (asigna box físico) */
   async callNextDocs(user: { id: string; boxNumber: number }, date?: string) {
     const box = user.boxNumber;
     const day = this.startOfDay(date ?? this.todayISO());
@@ -53,6 +57,7 @@ export class OpsService {
     return called;
   }
 
+  /** FINAL -> BOX (retiro/entrega) */
   async callNextRet(user: { id: string; boxNumber: number }, date?: string) {
     const box = user.boxNumber;
     const day = this.startOfDay(date ?? this.todayISO());
@@ -79,6 +84,7 @@ export class OpsService {
     return called;
   }
 
+  /** PSICO -> reservar siguiente para un psicólogo */
   async callNextPsy(userId: string, date?: string) {
     const day = this.startOfDay(date ?? this.todayISO());
     const toCall = await this.prisma.ticket.findFirst({
@@ -95,7 +101,7 @@ export class OpsService {
     return updated;
   }
 
-  // llamar PSICO específico
+  /** PSICO -> reservar un ticket específico por id (lo que usa /ops/psy/call) */
   async psyCall(params: { ticketId: string; userId: string }) {
     const { ticketId, userId } = params;
     const t = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
@@ -113,7 +119,26 @@ export class OpsService {
     return updated;
   }
 
-  // ===== ATENDER =====
+  /** CAJERO -> reservar siguiente para cajero */
+  async callNextCashier(userId: string, date?: string) {
+    const day = this.startOfDay(date ?? this.todayISO());
+    const toCall = await this.prisma.ticket.findFirst({
+      where: { date: day, stage: TicketStage.CAJERO, status: TicketStatus.EN_COLA, assignedUserId: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!toCall) return null;
+
+    const updated = await this.prisma.ticket.update({
+      where: { id: toCall.id },
+      data: { status: TicketStatus.EN_COLA, assignedUserId: userId, calledAt: new Date() },
+    });
+    this.realtime.emit('ticket.called', updated);
+    return updated;
+  }
+
+  // ========= ATENDER =========
+
+  /** BOX/FINAL: pasar a EN_ATENCION (usa box físico) */
   async markAttending(params: { ticketId: string; box: number }) {
     const { ticketId, box } = params;
     const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
@@ -129,6 +154,7 @@ export class OpsService {
     return updated;
   }
 
+  /** PSICO: pasar a EN_ATENCION */
   async psyAttend(params: { ticketId: string; userId: string }) {
     const { ticketId, userId } = params;
     const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
@@ -145,7 +171,26 @@ export class OpsService {
     return updated;
   }
 
-  // ===== CANCELAR LLAMADO =====
+  /** CAJERO: pasar a EN_ATENCION */
+  async cashierAttend(params: { ticketId: string; userId: string }) {
+    const { ticketId, userId } = params;
+    const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!current) throw new BadRequestException('NOT_FOUND');
+    if (current.assignedUserId !== userId) throw new BadRequestException('NOT_YOUR_TICKET');
+    if (current.stage !== TicketStage.CAJERO) throw new BadRequestException('INVALID_STAGE');
+    if (current.status !== TicketStatus.EN_COLA) throw new BadRequestException('INVALID_STATUS');
+
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: { status: TicketStatus.EN_ATENCION },
+    });
+    this.realtime.emit('ticket.updated', updated);
+    return updated;
+  }
+
+  // ========= CANCELAR LLAMADO =========
+
+  /** BOX/FINAL: cancelar llamado y liberar box */
   async cancelFromBox(params: { ticketId: string; box: number }) {
     const { ticketId, box } = params;
     const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
@@ -166,6 +211,7 @@ export class OpsService {
     return updated;
   }
 
+  /** PSICO: cancelar llamado (libera reserva) */
   async psyCancel(params: { ticketId: string; userId: string }) {
     const { ticketId, userId } = params;
     const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
@@ -182,43 +228,76 @@ export class OpsService {
     return updated;
   }
 
-  // ===== FINALIZAR =====
-  async finishFromBox(params: { ticketId: string; box: number }) {
-    const { ticketId, box } = params;
+  /** CAJERO: cancelar llamado (libera reserva) */
+  async cashierCancel(params: { ticketId: string; userId: string }) {
+    const { ticketId, userId } = params;
+    const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!current) throw new BadRequestException('NOT_FOUND');
+    if (current.assignedUserId !== userId) throw new BadRequestException('NOT_YOUR_TICKET');
+    if (current.stage !== TicketStage.CAJERO) throw new BadRequestException('INVALID_STAGE');
+    if (current.status !== TicketStatus.EN_COLA) throw new BadRequestException('INVALID_STATUS');
+
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: { assignedUserId: null, calledAt: null },
+    });
+    this.realtime.emit('ticket.updated', updated);
+    return updated;
+  }
+
+  // ========= DERIVAR / FINALIZAR =========
+
+  /** BOX decide a dónde mandar: PSICO | CAJERO | FINAL */
+  async boxDerive(params: { ticketId: string; box: number; to: DeriveTo }) {
+    const { ticketId, box, to } = params;
     const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
     if (!current) throw new BadRequestException('NOT_FOUND');
     if (current.assignedBox !== box) throw new BadRequestException('NOT_YOUR_TICKET');
+    if (current.stage !== TicketStage.BOX) throw new BadRequestException('INVALID_STAGE');
+    if (current.status !== TicketStatus.EN_ATENCION) throw new BadRequestException('INVALID_STATUS');
 
-    let updated;
-    if (current.stage === TicketStage.BOX) {
-      updated = await this.prisma.ticket.update({
-        where: { id: ticketId },
-        data: {
-          stage: TicketStage.PSICO,
-          status: TicketStatus.EN_COLA,
-          assignedBox: null,
-          assignedUserId: null,
-          calledAt: null,
-        },
-      });
-    } else if (current.stage === TicketStage.FINAL) {
-      updated = await this.prisma.ticket.update({
-        where: { id: ticketId },
-        data: {
-          status: TicketStatus.FINALIZADO,
-          assignedBox: null,
-          assignedUserId: null,
-          calledAt: null,
-        },
-      });
-    } else {
-      throw new BadRequestException('INVALID_STAGE_FOR_FINISH');
-    }
+    const targetStage =
+      to === 'CAJERO' ? TicketStage.CAJERO :
+      to === 'FINAL'  ? TicketStage.FINAL  :
+                        TicketStage.PSICO;
 
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        stage: targetStage,
+        status: TicketStatus.EN_COLA,
+        assignedBox: null,
+        assignedUserId: null,
+        calledAt: null,
+      },
+    });
     this.realtime.emit('ticket.finished', updated);
     return updated;
   }
 
+  /** CAJERO termina → pasa a FINAL (en cola) */
+  async cashierFinish(params: { ticketId: string; userId: string }) {
+    const { ticketId, userId } = params;
+    const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!current) throw new BadRequestException('NOT_FOUND');
+    if (current.assignedUserId !== userId) throw new BadRequestException('NOT_YOUR_TICKET');
+    if (current.stage !== TicketStage.CAJERO) throw new BadRequestException('INVALID_STAGE');
+    if (current.status !== TicketStatus.EN_ATENCION) throw new BadRequestException('INVALID_STATUS');
+
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        stage: TicketStage.FINAL,
+        status: TicketStatus.EN_COLA,
+        assignedUserId: null,
+        calledAt: null,
+      },
+    });
+    this.realtime.emit('ticket.finished', updated);
+    return updated;
+  }
+
+  /** PSICO termina → pasa a FINAL (en cola) */
   async psyFinish(params: { ticketId: string; userId: string }) {
     const { ticketId, userId } = params;
     const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });

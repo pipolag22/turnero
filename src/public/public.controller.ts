@@ -10,7 +10,7 @@ function toDay(dateISO: string) {
 export class PublicController {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Cola pública filtrada por etapa y fecha
+  
   @Get('queue')
   async queue(
     @Query('stage') stage: TicketStage,
@@ -20,10 +20,10 @@ export class PublicController {
 
     const rows = await this.prisma.ticket.findMany({
       where: { date: day, stage, status: TicketStatus.EN_COLA },
-      orderBy: [{ createdAt: 'asc' }], // ❌ sin queueNumber
+      orderBy: [{ createdAt: 'asc' }], 
       select: {
         id: true,
-        nombre: true,      // ✅ antes era fullName
+        nombre: true,      
         stage: true,
         assignedBox: true,
         createdAt: true,
@@ -32,7 +32,7 @@ export class PublicController {
 
     return rows.map((t) => ({
       id: t.id,
-      displayName: (t.nombre ?? '').trim(), // ✅ antes abreviabas fullName
+      displayName: (t.nombre ?? '').trim(),
       stage: t.stage,
       assignedBox: t.assignedBox,
       createdAt: t.createdAt,

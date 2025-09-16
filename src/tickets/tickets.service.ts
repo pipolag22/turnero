@@ -1,8 +1,8 @@
+// src/tickets/tickets.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import type { Etapa, Estado } from './dto/ticket.enums'; 
-
+import type { Etapa, Estado } from './ticket.enums';
 
 @Injectable()
 export class TicketsService {
@@ -11,7 +11,7 @@ export class TicketsService {
     private readonly rt: RealtimeGateway,
   ) {}
 
-  /** YYYY-MM-DD -> Date (00:00 local) */
+ 
   private toDate(dateISO: string) {
     return new Date(`${dateISO}T00:00:00`);
   }
@@ -27,13 +27,15 @@ export class TicketsService {
       RECEPCION: [],
       BOX: [],
       PSICO: [],
+      CAJERO: [],
       FINAL: [],
     };
     let nowServing: any = null;
 
     for (const t of all) {
+      
       if (t.status === 'FINALIZADO' || t.status === 'CANCELADO') continue;
-      // si tu Prisma enum ya devuelve strings compatibles, esto funciona directo
+
       colas[t.stage as Etapa].push(t);
       if (t.status === 'EN_ATENCION') nowServing = t;
     }
@@ -53,7 +55,7 @@ export class TicketsService {
       },
     });
 
-    // Broadcast
+   
     this.rt.emitTurnoCreated(created);
     this.rt.emitQueueSnapshot(await this.snapshot(dateISO));
 
@@ -80,55 +82,56 @@ export class TicketsService {
     return updated;
   }
 
-  /**
-   * Toma el siguiente ticket de la cola de una etapa, en forma transaccional.
-   * Intenta usar isolation level alto; si no está soportado (p.ej. SQLite), hace fallback.
-   */
+  
   async takeNext(stage: Etapa, dateISO: string) {
-  const date = this.toDate(dateISO);
+    const date = this.toDate(dateISO);
 
-  // orden de búsqueda: primero la misma etapa, si no hay, la anterior
-  const fallback: Record<Etapa, Etapa | null> = {
-    RECEPCION: null,
-    BOX: 'RECEPCION',
-    PSICO: 'BOX',
-    FINAL: null,
+  
+  const fallbackChain: Record<Etapa, Etapa[]> = {
+    RECEPCION: [],
+    BOX:       ['RECEPCION'],
+    PSICO:     ['BOX'],
+    CAJERO:    ['PSICO', 'BOX'], 
+    FINAL:     ['CAJERO'],
   };
 
   const runTx = async (tx: PrismaService) => {
-    // helper para buscar y (opcionalmente) promover
-    const pickFrom = async (fromStage: Etapa, promoteTo?: Etapa) => {
+    const tryPick = async (from: Etapa, promoteTo?: Etapa) => {
       const next = await (tx as any).ticket.findFirst({
-        where: { date, stage: fromStage as any, status: 'EN_COLA' as any },
+        where: { date, stage: from as any, status: 'EN_COLA' as any },
         orderBy: { createdAt: 'asc' },
       });
       if (!next) return null;
 
       const data: any = { status: 'EN_ATENCION' as any };
-      if (promoteTo && promoteTo !== fromStage) data.stage = promoteTo as any;
+      if (promoteTo && promoteTo !== from) data.stage = promoteTo as any;
 
-      return await (tx as any).ticket.update({
-        where: { id: next.id },
-        data,
-      });
+      return (tx as any).ticket.update({ where: { id: next.id }, data });
     };
 
-    // 1) intento en la etapa actual
-    let updated = await pickFrom(stage);
+    
+    let updated = await tryPick(stage);
+    if (updated) return updated;
 
-    // 2) si no hay, pruebo en la anterior y promuevo
-    if (!updated && fallback[stage]) {
-      updated = await pickFrom(fallback[stage]!, stage);
+    
+    for (const prev of fallbackChain[stage]) {
+      updated = await tryPick(prev, stage);
+      if (updated) return updated;
     }
 
-    return updated;
+    return null;
   };
 
-  let result: any = null;
+  let result: any;
   try {
-    result = await (this.prisma as any).$transaction(async (tx: any) => runTx(tx as PrismaService), { isolationLevel: 'Serializable' });
+    result = await (this.prisma as any).$transaction(
+      async (tx: any) => runTx(tx as PrismaService),
+      { isolationLevel: 'Serializable' },
+    );
   } catch {
-    result = await (this.prisma as any).$transaction(async (tx: any) => runTx(tx as PrismaService));
+    result = await (this.prisma as any).$transaction(
+      async (tx: any) => runTx(tx as PrismaService),
+    );
   }
 
   if (result) {
@@ -137,8 +140,6 @@ export class TicketsService {
     this.rt.emitQueueSnapshot(await this.snapshot(dateISO));
   }
 
-  return result; // puede ser null
-}
-
-
-}
+  return result; 
+ }
+ }

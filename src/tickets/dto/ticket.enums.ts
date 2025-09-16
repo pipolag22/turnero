@@ -1,23 +1,30 @@
 // src/tickets/ticket.enums.ts
 
-// Estados y Etapas "nuevos" (los que usa el front)
+// Estados (única fuente de verdad)
 export const EstadoEnum = ['EN_COLA','EN_ATENCION','DERIVADO','FINALIZADO','CANCELADO'] as const;
-export type Estado = typeof EstadoEnum[number];
+export type Estado = (typeof EstadoEnum)[number];
 
-export const EtapaEnum = ['RECEPCION','BOX','PSICO','FINAL'] as const;
-export type Etapa = typeof EtapaEnum[number];
+// Etapas nuevas (oficiales)
+export const EtapaEnum = ['RECEPCION','BOX','PSICO','CAJERO','FINAL'] as const;
+export type Etapa = (typeof EtapaEnum)[number];
 
-// Stages legacy (si los venías usando en otros lugares/rooms públicos)
-export const StageEnum = [
+// Nombres legacy que todavía aceptamos
+export const LegacyStageEnum = [
   'LIC_DOCS_IN_SERVICE',
   'WAITING_PSY',
   'PSY_IN_SERVICE',
+  'WAITING_CASHIER',     // cajero (legacy)
   'WAITING_LIC_RETURN',
   'COMPLETED',
   'CANCELLED',
 ] as const;
-export type Stage = typeof StageEnum[number];
+export type LegacyStage = (typeof LegacyStageEnum)[number];
 
-// Aceptar cualquiera de los 2 set de valores en dtos (parches graduales)
-export const StageAny = [...EtapaEnum, ...StageEnum] as const;
-export type StageAny = typeof StageAny[number];
+// Superconjunto (nuevo + legacy). Útil para DTOs que aceptan ambos.
+export const StageAny = [...EtapaEnum, ...LegacyStageEnum] as const;
+export type StageAny = (typeof StageAny)[number];
+
+/* -------------------- Compatibilidad hacia atrás -------------------- */
+/* Si en algún archivo viejo importas StageEnum / Stage, seguirá funcionando */
+export const StageEnum = StageAny;
+export type Stage = StageAny;

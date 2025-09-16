@@ -5,6 +5,7 @@ export enum UserRole {
   ADMIN = 'ADMIN',
   BOX_AGENT = 'BOX_AGENT',
   PSYCHO_AGENT = 'PSYCHO_AGENT',
+  CASHIER_AGENT = 'CASHIER_AGENT',
 }
 
 export class CreateUserDto {

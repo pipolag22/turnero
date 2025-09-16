@@ -4,7 +4,7 @@ import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { PatchTicketDto } from './dto/patch-ticket.dto';
 import { NextDto } from './dto/next.dto';
-import type { Etapa } from './dto/ticket.enums';
+import type { Etapa } from './ticket.enums';
 
 function todayISO(): string {
   const d = new Date();
@@ -13,17 +13,19 @@ function todayISO(): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-// mapear cualquier nombre legacy al nuevo enum Etapa
+
 function mapStageAnyToEtapa(s?: string): Etapa | undefined {
   switch (s) {
     case 'RECEPCION':
     case 'BOX':
     case 'PSICO':
+    case 'CAJERO':
     case 'FINAL':
       return s;
     case 'LIC_DOCS_IN_SERVICE': return 'BOX';
     case 'WAITING_PSY':         return 'PSICO';
     case 'PSY_IN_SERVICE':      return 'PSICO';
+    case 'WAITING_CASHIER':     return 'CAJERO';
     case 'WAITING_LIC_RETURN':  return 'FINAL';
     case 'COMPLETED':           return 'FINAL';
     case 'CANCELLED':           return 'FINAL';
@@ -36,7 +38,7 @@ export class TicketsController {
   constructor(private readonly service: TicketsService) {}
 
   @Get('snapshot')
-  @SkipThrottle() // sin límite para la TV
+  @SkipThrottle() 
   snapshot(@Query('date') date: string) {
     return this.service.snapshot(date);
   }

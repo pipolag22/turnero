@@ -1,7 +1,7 @@
+// src/tickets/dto/patch-ticket.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString } from 'class-validator';
-import { EstadoEnum, StageAny } from './ticket.enums';
-import type { Estado } from './ticket.enums';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { EstadoEnum, EtapaEnum, type Estado, type Etapa } from '../ticket.enums';
 
 export class PatchTicketDto {
   @ApiProperty({ example: 'Juan Pérez', required: false })
@@ -9,14 +9,13 @@ export class PatchTicketDto {
   @IsOptional()
   nombre?: string;
 
-  @ApiProperty({ enum: EstadoEnum, required: false })
-  @IsIn(EstadoEnum as readonly string[])
+  @ApiProperty({ enum: EstadoEnum, enumName: 'Estado', required: false })
+  @IsEnum(EstadoEnum)
   @IsOptional()
   status?: Estado;
 
-  // Permitimos etapa de los 2 mundos (EtapaEnum o StageEnum)
-  @ApiProperty({ enum: StageAny, required: false })
-  @IsIn(StageAny as readonly string[])
+  @ApiProperty({ enum: EtapaEnum, enumName: 'Etapa', required: false })
+  @IsEnum(EtapaEnum)
   @IsOptional()
-  stage?: (typeof StageAny)[number];
+  stage?: Etapa;
 }

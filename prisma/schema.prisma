@@ -14,6 +14,7 @@ enum Role {
   ADMIN
   BOX_AGENT
   PSYCHO_AGENT
+  CASHIER_AGENT
 }
 
 // ---------- MODELOS auxiliares ----------
@@ -55,6 +56,7 @@ enum TicketStage {
   BOX
   PSICO
   FINAL
+  CAJERO
 }
 
 // ---------- MODELO Ticket (ÚNICO) ----------
