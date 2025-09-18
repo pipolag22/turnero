@@ -56,7 +56,27 @@ export class OpsService {
     if (called) this.realtime.emit('ticket.called', called);
     return called;
   }
+async finishReturn(params: { ticketId: string; box: number }) {
+    const { ticketId, box } = params;
+    const t = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!t) throw new BadRequestException('NOT_FOUND');
+    if (t.assignedBox !== box) throw new BadRequestException('NOT_YOUR_TICKET');
+    if (t.stage !== TicketStage.FINAL) throw new BadRequestException('INVALID_STAGE');
+    if (t.status !== TicketStatus.EN_ATENCION) throw new BadRequestException('INVALID_STATUS');
 
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        status: TicketStatus.FINALIZADO,
+        assignedBox: null,
+        assignedUserId: null,
+        calledAt: null,
+      },
+    });
+
+    this.realtime.emit('ticket.finished', updated);
+    return updated;
+  }
   /** FINAL -> BOX (retiro/entrega) */
   async callNextRet(user: { id: string; boxNumber: number }, date?: string) {
     const box = user.boxNumber;
@@ -248,13 +268,20 @@ export class OpsService {
   // ========= DERIVAR / FINALIZAR =========
 
   /** BOX decide a dónde mandar: PSICO | CAJERO | FINAL */
-  async boxDerive(params: { ticketId: string; box: number; to: DeriveTo }) {
+  // OpsService.boxDerive
+async boxDerive(params: { ticketId: string; box: number; to: 'PSICO' | 'CAJERO' | 'FINAL' }) {
     const { ticketId, box, to } = params;
     const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
     if (!current) throw new BadRequestException('NOT_FOUND');
     if (current.assignedBox !== box) throw new BadRequestException('NOT_YOUR_TICKET');
-    if (current.stage !== TicketStage.BOX) throw new BadRequestException('INVALID_STAGE');
-    if (current.status !== TicketStatus.EN_ATENCION) throw new BadRequestException('INVALID_STATUS');
+
+    // ✅ evitar includes() con enums para que TS no se queje
+    if (current.stage !== TicketStage.BOX && current.stage !== TicketStage.FINAL) {
+      throw new BadRequestException('INVALID_STAGE');
+    }
+    if (current.status !== TicketStatus.EN_ATENCION) {
+      throw new BadRequestException('INVALID_STATUS');
+    }
 
     const targetStage =
       to === 'CAJERO' ? TicketStage.CAJERO :
@@ -271,9 +298,40 @@ export class OpsService {
         calledAt: null,
       },
     });
+
     this.realtime.emit('ticket.finished', updated);
     return updated;
   }
+
+  // Finalizar desde BOX (cuando está atendiendo BOX o FINAL)
+  async boxFinish(params: { ticketId: string; box: number }) {
+    const { ticketId, box } = params;
+
+    const current = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!current) throw new BadRequestException('NOT_FOUND');
+    if (current.assignedBox !== box) throw new BadRequestException('NOT_YOUR_TICKET');
+    if (current.status !== TicketStatus.EN_ATENCION) throw new BadRequestException('INVALID_STATUS');
+
+    // ✅ chequeo explícito (sin includes)
+    if (current.stage !== TicketStage.BOX && current.stage !== TicketStage.FINAL) {
+      throw new BadRequestException('INVALID_STAGE');
+    }
+
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        stage: TicketStage.FINAL,
+        status: TicketStatus.FINALIZADO,
+        assignedBox: null,
+        assignedUserId: null,
+        calledAt: null,
+      },
+    });
+
+    this.realtime.emit('ticket.finished', updated);
+    return updated;
+  }
+
 
   /** CAJERO termina → pasa a FINAL (en cola) */
   async cashierFinish(params: { ticketId: string; userId: string }) {
@@ -318,4 +376,6 @@ export class OpsService {
     this.realtime.emit('ticket.finished', updated);
     return updated;
   }
+   
+
 }

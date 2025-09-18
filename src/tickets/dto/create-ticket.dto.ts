@@ -19,7 +19,7 @@ export class CreateTicketDto {
   @IsOptional()
   date?: string; // YYYY-MM-DD
 
-  // Opcional (legado): si alguien envía un "stage" viejo, lo aceptamos
+  
   @ApiProperty({ enum: StageEnum, enumName: 'Stage', required: false })
   @IsEnum(StageEnum)
   @IsOptional()

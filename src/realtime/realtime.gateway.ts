@@ -1,7 +1,10 @@
+// src/realtime/realtime.gateway.ts
 import {
   WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+
+type TvAlert = { enabled: boolean; text: string };
 
 @WebSocketGateway({
   cors: { origin: true, credentials: true },
@@ -11,30 +14,29 @@ import { Server, Socket } from 'socket.io';
 export class RealtimeGateway {
   @WebSocketServer() io!: Server;
 
-  // opcional: suscripción a rooms públicos
+  // === estado de alerta (in-memory) ===
+  private alert: TvAlert = { enabled: false, text: '' };
+
+  // Opcional: suscripción a rooms públicos
   @SubscribeMessage('subscribe')
   handleSubscribe(@MessageBody() data: { rooms: string[] }, @ConnectedSocket() client: Socket) {
     data?.rooms?.forEach((r) => client.join(r));
   }
 
-  emitQueueSnapshot(payload: any) {
-    this.io.emit('queue.snapshot', payload);
+  // ----- emitters ya existentes -----
+  emitQueueSnapshot(payload: any) { this.io.emit('queue.snapshot', payload); }
+  emitTurnoCreated(payload: any)   { this.io.emit('turno.created', payload); }
+  emitTurnoUpdated(payload: any)   { this.io.emit('turno.updated', payload); }
+  emitNowServing(payload: any)     { this.io.emit('puesto.nowServing', payload); }
+  emit(event: string, ...args: any[]) { this.io.emit(event, ...args); }
+
+  // ----- NUEVO: API para la alerta -----
+  setAlert(next: TvAlert) {
+    this.alert = next;
+    this.io.emit('tv.alert', this.alert); // broadcast a todas las TVs
   }
 
-  emitTurnoCreated(payload: any) {
-    this.io.emit('turno.created', payload);
+  getAlert(): TvAlert {
+    return this.alert;
   }
-
-  emitTurnoUpdated(payload: any) {
-    this.io.emit('turno.updated', payload);
-  }
-
-  emitNowServing(payload: any) {
-    this.io.emit('puesto.nowServing', payload);
-  }
-
-  emit(event: string, ...args: any[]) {
-    this.io.emit(event, ...args);
-  }
-}
-
+    }

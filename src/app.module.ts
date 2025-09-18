@@ -11,6 +11,7 @@ import { OpsModule } from './ops/ops.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AdminModule } from './admin/admin.module';
 
 
 @Module({
@@ -27,6 +28,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
     RealtimeModule,
     TicketsModule,
     OpsModule,
+    AdminModule,
     HealthModule,
   ],
   providers: [
