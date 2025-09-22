@@ -1,4 +1,3 @@
-// src/realtime/realtime.gateway.ts
 import {
   WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket,
 } from '@nestjs/websockets';
@@ -17,7 +16,7 @@ export class RealtimeGateway {
   // === estado de alerta (in-memory) ===
   private alert: TvAlert = { enabled: false, text: '' };
 
-  // Opcional: suscripción a rooms públicos
+  //suscripción a rooms públicos
   @SubscribeMessage('subscribe')
   handleSubscribe(@MessageBody() data: { rooms: string[] }, @ConnectedSocket() client: Socket) {
     data?.rooms?.forEach((r) => client.join(r));
@@ -30,7 +29,7 @@ export class RealtimeGateway {
   emitNowServing(payload: any)     { this.io.emit('puesto.nowServing', payload); }
   emit(event: string, ...args: any[]) { this.io.emit(event, ...args); }
 
-  // ----- NUEVO: API para la alerta -----
+  // ----- API para la alerta -----
   setAlert(next: TvAlert) {
     this.alert = next;
     this.io.emit('tv.alert', this.alert); 

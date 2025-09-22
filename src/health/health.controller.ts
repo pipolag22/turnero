@@ -7,7 +7,7 @@ export class HealthController {
 
   @Get()
   async health() {
-    // ping a la DB
+    
     const okDb = await this.prisma.$queryRaw`SELECT 1 as ok`;
     return {
       status: 'ok',

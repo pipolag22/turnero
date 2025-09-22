@@ -9,7 +9,7 @@ RUN npm ci
 # código
 COPY . .
 
-# Build Nest (NO corremos prisma generate acá)
+# Build Nest 
 RUN npm run build
 
 # ---- Runtime stage ----
@@ -19,7 +19,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000
 
-# Solo deps de runtime
+
 COPY package*.json ./
 RUN npm ci --omit=dev
 

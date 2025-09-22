@@ -45,7 +45,7 @@ export class OpsService {
         where: { id: next.id },
         data: {
           stage: TicketStage.BOX,
-          status: TicketStatus.EN_COLA, // llamando
+          status: TicketStatus.EN_COLA, 
           assignedBox: box,
           assignedUserId: user.id,
           calledAt: new Date(),
@@ -92,7 +92,7 @@ async finishReturn(params: { ticketId: string; box: number }) {
       return tx.ticket.update({
         where: { id: next.id },
         data: {
-          status: TicketStatus.EN_COLA, // llamando
+          status: TicketStatus.EN_COLA, 
           assignedBox: box,
           assignedUserId: user.id,
           calledAt: new Date(),

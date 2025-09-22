@@ -28,7 +28,7 @@ export class OpsController {
     return this.ops.callNextRet({ id: userId, boxNumber: req.user.boxNumber }, date);
   }
 
-  // 👉 NUEVO: llamar un ticket específico a BOX (desde RECP o FINAL)
+  //llamar un ticket específico a BOX (desde RECP o FINAL)
   @Post('box/call')
   @Roles('BOX_AGENT' as AppRole)
   boxCall(@Req() req: any, @Body('ticketId') ticketId: string) {
