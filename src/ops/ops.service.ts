@@ -103,6 +103,36 @@ async finishReturn(params: { ticketId: string; box: number }) {
     if (called) this.realtime.emit('ticket.called', called);
     return called;
   }
+  // --- NUEVO: llamar específico a BOX ---
+async boxCall(params: { ticketId: string; userId: string; box: number }) {
+  const { ticketId, userId, box } = params;
+  const t = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+  if (!t) throw new BadRequestException('NOT_FOUND');
+
+  // Solo se puede desde RECP (va a BOX) o desde FINAL (retiro), y debe estar en cola y sin box asignado
+  const validStage = t.stage === TicketStage.RECEPCION || t.stage === TicketStage.FINAL;
+  if (!validStage) throw new BadRequestException('INVALID_STAGE');
+  if (t.status !== TicketStatus.EN_COLA) throw new BadRequestException('INVALID_STATUS');
+  if (t.assignedBox) throw new BadRequestException('ALREADY_RESERVED');
+
+  // el box debe estar libre
+  await this.ensureBoxFree(this.prisma, t.date, box);
+
+  const updated = await this.prisma.ticket.update({
+    where: { id: ticketId },
+    data: {
+      // si viene de recepción, lo movemos a BOX; si ya está en FINAL, se queda en FINAL
+      stage: t.stage === TicketStage.RECEPCION ? TicketStage.BOX : TicketStage.FINAL,
+      status: TicketStatus.EN_COLA,
+      assignedBox: box,
+      assignedUserId: userId,
+      calledAt: new Date(),
+    },
+  });
+
+  this.realtime.emit('ticket.called', updated);
+  return updated;
+}
 
   /** PSICO -> reservar siguiente para un psicólogo */
   async callNextPsy(userId: string, date?: string) {
@@ -209,7 +239,22 @@ async finishReturn(params: { ticketId: string; box: number }) {
   }
 
   // ========= CANCELAR LLAMADO =========
+async cashierCall(params: { ticketId: string; userId: string }) {
+  const { ticketId, userId } = params;
+  const t = await this.prisma.ticket.findUnique({ where: { id: ticketId } });
+  if (!t) throw new BadRequestException('NOT_FOUND');
+  if (t.stage !== TicketStage.CAJERO) throw new BadRequestException('INVALID_STAGE');
+  if (t.status !== TicketStatus.EN_COLA) throw new BadRequestException('INVALID_STATUS');
+  if (t.assignedUserId) throw new BadRequestException('ALREADY_RESERVED');
 
+  const updated = await this.prisma.ticket.update({
+    where: { id: ticketId },
+    data: { assignedUserId: userId, calledAt: new Date() },
+  });
+
+  this.realtime.emit('ticket.called', updated);
+  return updated;
+}
   /** BOX/FINAL: cancelar llamado y liberar box */
   async cancelFromBox(params: { ticketId: string; box: number }) {
     const { ticketId, box } = params;

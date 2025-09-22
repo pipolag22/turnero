@@ -15,7 +15,8 @@ async function bootstrap() {
 
   // Seguridad y CORS
   app.use(helmet());
-  app.enableCors({ origin: '*', credentials: false });
+  app.enableCors({ origin: process.env.CORS_ORIGIN ?? '*', credentials: false });
+
 
   // Request-ID 
   app.use(new RequestIdMiddleware().use);
@@ -34,7 +35,7 @@ async function bootstrap() {
     .setTitle('Turnero API')
     .setDescription('API para turnos: licencias y psicofísico')
     .setVersion('1.0.0')
-    .addBearerAuth() // JWT en Authorize
+    .addBearerAuth() 
     .build();
 
   const doc = SwaggerModule.createDocument(app, config);
@@ -44,7 +45,7 @@ async function bootstrap() {
   // Interceptor de logging
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
   console.log(`API running on http://localhost:${process.env.PORT ?? 3000}`);
 }
 

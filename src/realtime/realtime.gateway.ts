@@ -9,7 +9,7 @@ type TvAlert = { enabled: boolean; text: string };
 @WebSocketGateway({
   cors: { origin: true, credentials: true },
   transports: ['websocket'],
-  namespace: '/', // mismo que usa el front
+  namespace: '/', 
 })
 export class RealtimeGateway {
   @WebSocketServer() io!: Server;
@@ -33,7 +33,7 @@ export class RealtimeGateway {
   // ----- NUEVO: API para la alerta -----
   setAlert(next: TvAlert) {
     this.alert = next;
-    this.io.emit('tv.alert', this.alert); // broadcast a todas las TVs
+    this.io.emit('tv.alert', this.alert); 
   }
 
   getAlert(): TvAlert {

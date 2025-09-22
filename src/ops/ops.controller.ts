@@ -9,12 +9,11 @@ import { RolesGuard } from '../auth/roles.guard';
 export class OpsController {
   constructor(private readonly ops: OpsService) {}
 
-  // helper para tomar el id del usuario (algunos tokens traen "sub")
   private getUserId(req: any): string {
     return req.user?.id ?? req.user?.sub;
   }
 
-  // === BOX tradicional ===
+  // ===== BOX tradicional =====
   @Post('call-next-lic')
   @Roles('BOX_AGENT' as AppRole)
   callNextLic(@Req() req: any, @Body('date') date?: string) {
@@ -29,6 +28,14 @@ export class OpsController {
     return this.ops.callNextRet({ id: userId, boxNumber: req.user.boxNumber }, date);
   }
 
+  // 👉 NUEVO: llamar un ticket específico a BOX (desde RECP o FINAL)
+  @Post('box/call')
+  @Roles('BOX_AGENT' as AppRole)
+  boxCall(@Req() req: any, @Body('ticketId') ticketId: string) {
+    const userId = this.getUserId(req);
+    return this.ops.boxCall({ ticketId, userId, box: req.user.boxNumber });
+  }
+
   @Post('attending')
   @Roles('BOX_AGENT' as AppRole)
   attending(@Req() req: any, @Body('ticketId') ticketId: string) {
@@ -40,12 +47,13 @@ export class OpsController {
   cancel(@Req() req: any, @Body('ticketId') ticketId: string) {
     return this.ops.cancelFromBox({ ticketId, box: req.user.boxNumber });
   }
+
   @Post('box/finish-return')
   @Roles('BOX_AGENT' as AppRole)
   finishReturn(@Req() req: any, @Body('ticketId') ticketId: string) {
     return this.ops.finishReturn({ ticketId, box: req.user.boxNumber });
   }
-  
+
   @Post('box/derive')
   @Roles('BOX_AGENT' as AppRole)
   boxDerive(@Req() req: any, @Body() dto: { ticketId: string; to: 'PSICO' | 'CAJERO' | 'FINAL' }) {
@@ -58,7 +66,7 @@ export class OpsController {
     return this.ops.boxFinish({ ticketId, box: req.user.boxNumber });
   }
 
-  // === PSICO ===
+  // ===== PSICO =====
   @Post('call-next-psy')
   @Roles('PSYCHO_AGENT' as AppRole)
   callNextPsy(@Req() req: any, @Body('date') date?: string) {
@@ -94,12 +102,20 @@ export class OpsController {
     return this.ops.psyFinish({ ticketId, userId });
   }
 
-  // === CAJERO ===
+  // ===== CAJERO =====
   @Post('cashier/call-next')
   @Roles('CASHIER_AGENT' as AppRole)
   callNextCashier(@Req() req: any, @Body('date') date?: string) {
     const userId = this.getUserId(req);
     return this.ops.callNextCashier(userId, date);
+  }
+
+  // 👉 NUEVO: llamar un ticket específico a CAJERO
+  @Post('cashier/call')
+  @Roles('CASHIER_AGENT' as AppRole)
+  cashierCall(@Req() req: any, @Body('ticketId') ticketId: string) {
+    const userId = this.getUserId(req);
+    return this.ops.cashierCall({ ticketId, userId });
   }
 
   @Post('cashier/attend')
@@ -122,5 +138,4 @@ export class OpsController {
     const userId = this.getUserId(req);
     return this.ops.cashierFinish({ ticketId, userId });
   }
-  
 }
