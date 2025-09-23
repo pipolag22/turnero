@@ -1,4 +1,3 @@
-// prisma/seed.ts
 import { resolve } from 'node:path';
 import * as dotenv from 'dotenv';
 dotenv.config({ path: resolve(__dirname, '../.env') });
@@ -10,8 +9,6 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient({
   datasourceUrl: process.env.DATABASE_URL,
 });
-
-
 
 type RoleEnum = 'ADMIN' | 'BOX_AGENT' | 'PSYCHO_AGENT';
 
