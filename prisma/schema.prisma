@@ -80,3 +80,11 @@ model Ticket {
   @@index([date])
   @@index([date, stage, status, createdAt])
 }
+model SystemStatus {
+  id              String   @id @default("singleton")
+  alertaEnabled   Boolean  @default(false)
+  alertaText      String   @default("")
+  teoricoStatus   String   @default("INACTIVO") // "ACTIVO" o "INACTIVO"
+  practicoStatus  String   @default("NINGUNA")  // "NINGUNA", "PISTA_CHICA", "PISTA_GRANDE", "AMBAS"
+  updatedAt       DateTime @updatedAt
+}

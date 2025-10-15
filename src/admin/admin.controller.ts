@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { AdminService, type TvAlert } from './admin.service';
+import { Body, Controller, Get, Post, UseGuards, HttpCode } from '@nestjs/common';
+import { AdminService, type SystemStatus } from './admin.service'; // Importamos el nuevo tipo
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles, AppRole } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -7,17 +7,18 @@ import { RolesGuard } from '../auth/roles.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly adminService: AdminService) {}
 
-  @Get('alert')
+  @Get('status') // <-- ENDPOINT CORREGIDO
   @Roles('ADMIN' as AppRole)
-  getAlert(): TvAlert {
-    return this.admin.getAlert();
+  async getStatus(): Promise<SystemStatus> {
+    return this.adminService.getStatus();
   }
 
-  @Post('alert')
+  @Post('status') // <-- ENDPOINT CORREGIDO
   @Roles('ADMIN' as AppRole)
-  setAlert(@Body() body: TvAlert): TvAlert {
-    return this.admin.setAlert(body);
+  @HttpCode(200)
+  async setStatus(@Body() body: Partial<SystemStatus>): Promise<SystemStatus> {
+    return this.adminService.setStatus(body);
   }
 }
