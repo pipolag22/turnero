@@ -1,9 +1,9 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { PrismaService } from '../prisma/prisma.service'; // Asegúrate de que PrismaService esté importado
-import { Cron, CronExpression } from '@nestjs/schedule'; // Importa el programador de tareas
+import { PrismaService } from '../prisma/prisma.service'; 
+import { Cron, CronExpression } from '@nestjs/schedule'; 
 
-// Este es el nuevo "tipo" de datos que usaremos en toda la app para el estado
+
 export type SystemStatus = {
   alertaEnabled: boolean;
   alertaText: string;
@@ -15,11 +15,10 @@ export type SystemStatus = {
 export class AdminService implements OnModuleInit {
   constructor(
     private readonly rt: RealtimeGateway,
-    private readonly prisma: PrismaService, // Inyectamos el servicio de Prisma
+    private readonly prisma: PrismaService, 
   ) {}
 
-  // Esta función se ejecuta una vez cuando la API arranca
-  // y se asegura de que haya un registro de estado en la base de datos.
+  
   async onModuleInit() {
     const status = await this.prisma.systemStatus.findUnique({
       where: { id: 'singleton' },
@@ -71,11 +70,11 @@ export class AdminService implements OnModuleInit {
     const currentStatus = await this.getStatus();
     
     // Solo actualiza si es necesario, para no emitir eventos inútiles
-    if (currentStatus.teoricoStatus !== 'INACTIVO' || currentStatus.practicoStatus !== 'NINGUNA') {
+    if (currentStatus.teoricoStatus !== 'INACTIVO' || currentStatus.practicoStatus !== 'INACTIVO') {
       await this.setStatus({
-        ...currentStatus, // Mantenemos la alerta como está
+        ...currentStatus,
         teoricoStatus: 'INACTIVO',
-        practicoStatus: 'NINGUNA',
+        practicoStatus: 'INACTIVO',
       });
       console.log('CRON: Exámenes desactivados.');
     } else {

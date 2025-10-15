@@ -85,6 +85,7 @@ model SystemStatus {
   alertaEnabled   Boolean  @default(false)
   alertaText      String   @default("")
   teoricoStatus   String   @default("INACTIVO") // "ACTIVO" o "INACTIVO"
-  practicoStatus  String   @default("NINGUNA")  // "NINGUNA", "PISTA_CHICA", "PISTA_GRANDE", "AMBAS"
+  // CAMBIO: Nuevas opciones para el estado del práctico
+  practicoStatus  String   @default("INACTIVO") // "INACTIVO", "CIRCUITO_AUTOS", "CIRCUITO_MOTOS", "SUSPENDIDO_LLUVIA"
   updatedAt       DateTime @updatedAt
 }
