@@ -1,41 +1,32 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { TicketStage, TicketStatus } from '@prisma/client';
+import { Controller, Get } from '@nestjs/common';
+import { TicketsService } from '../tickets/tickets.service';
+import { SkipThrottle } from '@nestjs/throttler';
+import { AdminService } from 'src/admin/admin.service';
 
-function toDay(dateISO: string) {
-  return new Date(`${dateISO}T00:00:00`);
+
+function todayISO(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
 }
 
 @Controller('public')
 export class PublicController {
-  constructor(private readonly prisma: PrismaService) {}
-
   
-  @Get('queue')
-  async queue(
-    @Query('stage') stage: TicketStage,
-    @Query('date') date: string,
-  ) {
-    const day = toDay(date);
+  constructor(
+  private readonly ticketsService: TicketsService,
+  private readonly adminService: AdminService) {}
+  @SkipThrottle()
+  @Get('tvboard')
+  getTvboardSnapshot() {
+    
+    return this.ticketsService.snapshot(todayISO());
+  }
 
-    const rows = await this.prisma.ticket.findMany({
-      where: { date: day, stage, status: TicketStatus.EN_COLA },
-      orderBy: [{ createdAt: 'asc' }], 
-      select: {
-        id: true,
-        nombre: true,      
-        stage: true,
-        assignedBox: true,
-        createdAt: true,
-      },
-    });
-
-    return rows.map((t) => ({
-      id: t.id,
-      displayName: (t.nombre ?? '').trim(),
-      stage: t.stage,
-      assignedBox: t.assignedBox,
-      createdAt: t.createdAt,
-    }));
+  @SkipThrottle()
+  @Get('status')
+  getSystemStatus() {
+    return this.adminService.getStatus();
   }
 }

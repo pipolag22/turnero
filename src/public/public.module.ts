@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { PublicController } from './public.controller';
-import { PrismaModule } from '../prisma/prisma.module';
+import { TicketsModule } from '../tickets/tickets.module'; 
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [TicketsModule,AdminModule], 
   controllers: [PublicController],
 })
 export class PublicModule {}

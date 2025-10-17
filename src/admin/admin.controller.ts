@@ -9,13 +9,13 @@ import { RolesGuard } from '../auth/roles.guard';
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
-  @Get('status') // <-- ENDPOINT CORREGIDO
+  @Get('status') 
   @Roles('ADMIN' as AppRole)
   async getStatus(): Promise<SystemStatus> {
     return this.adminService.getStatus();
   }
 
-  @Post('status') // <-- ENDPOINT CORREGIDO
+  @Post('status') 
   @Roles('ADMIN' as AppRole)
   @HttpCode(200)
   async setStatus(@Body() body: Partial<SystemStatus>): Promise<SystemStatus> {
