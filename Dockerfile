@@ -10,6 +10,7 @@ RUN npm ci
 COPY . .
 
 # Build Nest 
+
 RUN npm run build
 
 # ---- Runtime stage ----
